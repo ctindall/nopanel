@@ -14,9 +14,16 @@ if [[ "$user" = "" ]]; then
 fi
 
 tmpdir="$(mktemp -d)"
+dblist="$(mktemp)"
+
+echo "show databases like '$user\_%';" | mysql -b | sed '1d' > $dblist 
+echo "show databases like '$user%';" | mysql -b | sed '1d' > $dblist 
 
 #create a database dump in tmpdir
-mysqldump "$2" > $tmpdir/database.sql
+for db in $(cat $dblist)
+do
+    mysqldump "$db" > $tmpdir/$db.sql
+done
 
 #copy docroot to tmpdir
 rsync -aP /var/www/$domain/ $tmpdir
@@ -27,4 +34,5 @@ chown -R $user. $tmpdir
 tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
 
 rm -rf "$tmpdir"
+rm -rf "$dblist"
 
