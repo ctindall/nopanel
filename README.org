@@ -1,0 +1,116 @@
+#+PROPERTY: :padline no
+* NoPanel: multitenant hosting without the bloat
+
+Sometimes a shared webserver makes sense, but you still want to save your sanity. NoPanel is a solution to this need. It provides a minimal framework for organizing many Apache docroots on the same server, separating user accounts from one another, and performing other basic tasks like backups and site setup.
+
+More important, is what NoPanel doesnt do:
+
+ - It does not provide a web user interface for administration.
+ - It does not require a database for administration.
+ - It eschews magic files and other ersatz-databases wherever applicable.
+ - It doesn't use a 4,000 line Perl script when 8 lines of bash will do.
+
+I use this simple setup on my own servers, and thought it would be nice
+to share it with the community.
+
+* Quickstart
+
+** Installing
+NoPanel scripts live in =/root/bin/= and templates live in =/root/templates=. Because you, as the system administrator, are presumably root, and because distro maintainers typically do not like to muck about in /root/ with their packages, these are good places to put things so that they are not fucked with by other packages or scripts.
+
+** TODO create installation method
+
+* Sites
+In NoPanel, a "site" is a single domain, a single Apache config file, and a single docroot. There is no yaml, json, or other configuration file, so in order to keep everything straight, we need to rely on some conventions.
+
+** Creating Sites
+Each site in NoPanel requires a "name", which will be used as the name of the Linux system user (and group) that this site uses. Since you might be typing this quite often, take a second and think about what username you would like to use. While NoPanel technically doesn't care, it will be easier for you, a human, if you come up with some ration scheme.
+
+Personally, I use the convention <client descriptor>_<site descriptor>. For example, if I were setting up two sites for Frank's Pet Shop and they had two domains, one for their public-facing site, and the other a private wiki for employees, I might call the two sites =franks_main= and =franks_wiki=.
+
+In any case, the =create_site.sh= script will need to know the name you choose, and the domain of the site:
+
+#+NAME: create_site_top
+#+BEGIN_SRC sh
+#!/bin/bash
+
+domain=$1
+user=$2
+#+END_SRC 
+
+The docroot of a site lives in in =/var/www/$domain=, and the Apache configuration lives in =/etc/-apache2/sites-available/$domain.conf.
+
+#+NAME: create_site_paths
+#+BEGIN_SRC sh 
+docroot="/var/www/$domain"
+conf="/etc/apache2/sites-available/$domain.conf"
+echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
+#+END_SRC
+
+#+NAME: create_site_user_and_group
+#+BEGIN_SRC sh 
+echo -n "Creating new user and user-group..."
+useradd -M -U -s /bin/nologin "$user"
+echo "Done!"
+#+END_SRC
+
+
+#+NAME: create_site_docroot
+#+BEGIN_SRC sh 
+echo -n "Creating new document in '$docroot'..."
+mkdir -p "$docroot"
+echo "Done!"
+#+END_SRC
+
+
+#+NAME: create_site_conf
+#+BEGIN_SRC sh 
+echo -n "Creating new apache config '$conf'..."
+cp "/root/templates/site-template.conf" "/etc/apache2/sites-available/$domain.conf"
+sed -i "s/{domain}/$domain/g" "$conf"
+sed -i "s/{user}/$user/g" "$conf"
+echo "Done!"
+#+END_SRC
+
+
+#+NAME: create_site_test_page
+#+BEGIN_SRC sh 
+echo -n "Creating test page at '$docroot/index.php'..."
+echo "<?php phpinfo(); ?>" > $docroot/index.php
+chown -R $user. $docroot
+echo "Done!"
+#+END_SRC
+
+
+#+NAME: create_site_enable
+#+BEGIN_SRC sh 
+a2ensite $domain
+
+echo -n "Reloading Apache..."
+service apache2 reload
+echo "Done!"
+
+echo "Test site should be available at 'http://$domain' (barring DNS fuckups)."
+#+END_SRC
+
+#+NAME: create_site
+#+BEGIN_SRC sh :padline no :tangle root/bin/create_site.sh :noweb yes :exports none
+<<create_site_top>>
+
+<<create_site_paths>>
+
+
+<<create_site_user_and_group>>
+
+
+<<create_site_docroot>>
+
+
+<<create_site_conf>>
+
+
+<<create_site_test_page>>
+
+
+<<create_site_enable>>
+#+END_SRC
