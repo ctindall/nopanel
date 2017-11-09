@@ -47,6 +47,9 @@ conf="/etc/apache2/sites-available/$domain.conf"
 echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
 #+END_SRC
 
+
+We create the user without a homedir, /with/ a user group of the same name, and with no login shell (or more accurately, the login shell set to /bin/nologin. This is under the assumption that only you, root, will be messing with any of these files at all. Remember, there's no control panel here. In 2017, if a user knows enough to be logging into a shell, he can get his own VPS for $12 a year and doesn't want to be on your shared server.
+
 #+NAME: create_site_user_and_group
 #+BEGIN_SRC sh 
 echo -n "Creating new user and user-group..."
@@ -54,14 +57,7 @@ useradd -M -U -s /bin/nologin "$user"
 echo "Done!"
 #+END_SRC
 
-
-#+NAME: create_site_docroot
-#+BEGIN_SRC sh 
-echo -n "Creating new document in '$docroot'..."
-mkdir -p "$docroot"
-echo "Done!"
-#+END_SRC
-
+The Apache config file is created using a template system from =/root/templates/site-template.conf=. Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values:
 
 #+NAME: create_site_conf
 #+BEGIN_SRC sh 
@@ -72,6 +68,41 @@ sed -i "s/{user}/$user/g" "$conf"
 echo "Done!"
 #+END_SRC
 
+The config itself is pretty straightforward. 
+
+#+NAME: site-template
+#+BEGIN_SRC apache2 :tangle root/templates/site-template.conf
+<VirtualHost *:8080>
+	ServerName {domain}
+	ServerAlias www.{domain}fuck
+
+	DocumentRoot /var/www/{domain}
+
+	LogLevel info
+
+	ErrorLog /var/log/apache2/{domain}-error.log
+	CustomLog /var/log/apache2/{domain}-access.log combined
+
+	AssignUserId {user} {user}
+</VirtualHost>
+#+END_SRC
+
+Notice that the VirtualHost listens on port 8080, since in my usual configuration, Apache is actually sitting behind some kind of front-end proxy or load balancer. This isn't always on the same machine, but I've standardized on having Apache listen on 8080 even when the load-balancer is on a different machine. As with other decisions in NoPanel, this one was made to reduce the amount of site-specific configuration that is necessary for the types of sites I typically deal with.
+
+As previously mentioned, the DocumentRoot is in =/var/www/$domain=. 
+
+=LogLevel info=, as is configured here, is one level above "debug" and logs quite a bit. I find this helpful when troubleshooting. With large disks, low-traffic sites, and proper log rotation, the volume is rarely a problem. To make it easy to find logs relating to a particular site, each domain has its own logs. I also separate error and access logs, so that I can have different rotation schedules for each.
+
+Now we're ready to create the docroot itself...
+
+#+NAME: create_site_docroot
+#+BEGIN_SRC sh 
+echo -n "Creating new document in '$docroot'..."
+mkdir -p "$docroot"
+echo "Done!"
+#+END_SRC
+
+...and to populated it with a test page:
 
 #+NAME: create_site_test_page
 #+BEGIN_SRC sh 
@@ -81,6 +112,7 @@ chown -R $user. $docroot
 echo "Done!"
 #+END_SRC
 
+The last thing we need to do is "enable" the site with =a2ensite= (which itself just symlinks the config file into =/etc/apache/sites-enabled/=) and reload the Apache config.
 
 #+NAME: create_site_enable
 #+BEGIN_SRC sh 
@@ -93,24 +125,23 @@ echo "Done!"
 echo "Test site should be available at 'http://$domain' (barring DNS fuckups)."
 #+END_SRC
 
+Like it says on the time, you should then be able to check out the =phpinfo()= page at the proper domain, provided DNS is set up, or you have the appropriate entries in your local hosts file.
+
+Taken together, the script then looks like this, a straightforward script about two-dozen non-blank lines:
+
 #+NAME: create_site
-#+BEGIN_SRC sh :padline no :tangle root/bin/create_site.sh :noweb yes :exports none
+#+BEGIN_SRC sh :padline no :tangle root/bin/create_site.sh :noweb yes
 <<create_site_top>>
 
 <<create_site_paths>>
 
-
 <<create_site_user_and_group>>
-
 
 <<create_site_docroot>>
 
-
 <<create_site_conf>>
 
-
 <<create_site_test_page>>
-
 
 <<create_site_enable>>
 #+END_SRC
