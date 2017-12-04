@@ -5,6 +5,7 @@ user=$2
 
 docroot="/var/www/$domain"
 conf="/etc/apache2/sites-available/$domain.conf"
+
 echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
 
 echo -n "Creating new user and user-group..."

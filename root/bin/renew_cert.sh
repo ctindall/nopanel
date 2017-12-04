@@ -2,24 +2,13 @@
 
 #configuration
 expiration_cutoff=90 #minimum number of days before expiration to renew the cert
-dev_webroot="/home/cam/cl-exacta.git/webroot"
-production_webroot="/var/www/$1"
+domain="$1"
+webroot="/var/www/$domain"
 haproxy_cert_dir="/etc/haproxy/certs"
-
-domain=$1
 letsencrypt_basedir=/etc/letsencrypt
 certfile="$letsencrypt_basedir/live/$domain/cert.pem"
 
-#webroot is different on the dev box:
-if [[ -d "$dev_webroot" ]]
-then
-    webroot=$dev_webroot
-else
-    webroot=$production_webroot
-fi
-
 #debian perversely still calls the certbot binary by 'letsencrypt'
-
 if hash certbot 2>/dev/null
 then
     certbot_binary="certbot"
@@ -40,20 +29,23 @@ fi
 #if it expires soon... 
 if [[ "$days_until_expiration" -lt "$expiration_cutoff" ]]
 then
-    #...get the cert from letsencrypt...
-    if  $certbot_binary certonly \
-			--webroot \
-			--keep-until-expiring \
-			--email "inquiries@exactatechnologies.com" \
-			--agree-tos \
-			-w $webroot \
-			-d $domain
-    then
-	#...if successful cat the chain and privkey files together because HAproxy needs them as one file
-	cat /etc/letsencrypt/live/$domain/fullchain.pem \
-	    /etc/letsencrypt/live/$domain/privkey.pem > $haproxy_cert_dir/$domain.pem
-
-	#...and reload the HAproxy config
-	service haproxy restart
-    fi                         
+    for d in "$domain" "www.$domain"
+    do	
+	#...get the cert from letsencrypt...
+	if  $certbot_binary certonly \
+			    --webroot \
+			    --keep-until-expiring \
+			    --email "inquiries@exactatechnologies.com" \
+			    --agree-tos \
+			    -w $webroot \
+			    -d $d
+	then
+	    #...if successful cat the chain and privkey files together because HAproxy needs them as one file
+	    cat /etc/letsencrypt/live/$d/fullchain.pem \
+		/etc/letsencrypt/live/$d/privkey.pem > $haproxy_cert_dir/$d.pem
+	    
+	    #...and reload the HAproxy config
+	    service haproxy restart
+	fi
+    done
 fi
