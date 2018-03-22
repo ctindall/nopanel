@@ -16,5 +16,6 @@ to share it with the community.
 ** Sites
 In NoPanel, a "site" is a single domain, a single Apache config file, and a single docroot. There is no yaml, json, or other configuration file, so in order to keep everything straight, we need to rely on some conventions.
 
-#+INCLUDE: org/create_site.sh
+#+INCLUDE: org/create_site.org
 
+#+

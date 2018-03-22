@@ -23,7 +23,7 @@ echo -e "I'll try to create a site with domain '$domain' and matching user '$use
 #+END_SRC
 
 
-We create the user without a homedir, /with/ a user group of the same name, and with no login shell (or more accurately, the login shell set to /bin/nologin. This is under the assumption that only you, root, will be messing with any of these files at all. Remember, there's no control panel here. In 2017, if a user knows enough to be logging into a shell, he can get his own VPS for $12 a year and doesn't want to be on your shared server.
+We create the user without a homedir, /with/ a user group of the same name, and with no login shell (or more accurately, the login shell set to /bin/nologin. This is under the assumption that only you, root, will be the only one messing with these files at all. Remember, there's no control panel here. In 2018, if a user knows enough to be logging into a shell, he can get his own VPS for $12 a year and doesn't want to be on your shared server.
 
 #+NAME: create_site_user_and_group
 #+BEGIN_SRC sh 
@@ -32,36 +32,22 @@ useradd -M -U -s /bin/nologin "$user"
 echo "Done!"
 #+END_SRC
 
-The Apache config file is created using a template. Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values. The template itself looks like this:
+The Apache config file is created using a template which looks like this: 
 
-#+INCLUDE: other/site-template.conf src
+#+NAME: create_site_conf_template
+#+INCLUDE: ../other/site-template.conf src
+
+Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values. The template itself looks like this:
 
 #+NAME: create_site_conf
-#+BEGIN_SRC sh 
+#+BEGIN_SRC sh :padline no :noweb yes
 echo -n "Creating new apache config '$conf'..."
 cp "/root/templates/site-template.conf" "/etc/apache2/sites-available/$domain.conf"
-sed -i "s/{domain}/$domain/g" "$conf"
-sed -i "s/{user}/$user/g" "$conf"
-echo "Done!"
-#+END_SRC
+sed -e "s/{domain}/$domain/g" -e "s/{user}/$user/g" <<CONFTEMPLATE
 
-The config itself is pretty straightforward. 
+#+INCLUDE: ../other/site-template.conf export
 
-#+NAME: site-template
-#+BEGIN_SRC apache2 :tangle 
-<VirtualHost *:8080>
-	ServerName {domain}
-	ServerAlias www.{domain}
-
-	DocumentRoot /var/www/{domain}
-
-	LogLevel info
-
-	ErrorLog /var/log/apache2/{domain}-error.log
-	CustomLog /var/log/apache2/{domain}-access.log combined
-
-	AssignUserId {user} {user}
-</VirtualHost>
+CONFTEMPLATE
 #+END_SRC
 
 Notice that the VirtualHost listens on port 8080, since in my usual configuration, Apache is actually sitting behind some kind of front-end proxy or load balancer. This isn't always on the same machine, but I've standardized on having Apache listen on 8080 even when the load-balancer is on a different machine. As with other decisions in NoPanel, this one was made to reduce the amount of site-specific configuration that is necessary for the types of sites I typically deal with.
@@ -104,7 +90,7 @@ echo "Test site should be available at 'http://$domain' (barring DNS fuckups)."
 
 Like it says on the time, you should then be able to check out the =phpinfo()= page at the proper domain, provided DNS is set up, or you have the appropriate entries in your local hosts file.
 
-Taken together, the script then looks like this, a straightforward script about two-dozen non-blank lines:
+Taken together, the script then looks like this, a straightforward script of about two-dozen non-blank lines:
 
 #+NAME: create_site
 #+BEGIN_SRC sh :padline no :noweb yes
@@ -124,3 +110,9 @@ function create_site {
 <<create_site_enable>>
 }
 #+END_SRC 
+
+#+NAME: full_script
+#+BEGIN_SRC sh :padline no :noweb yes :exports none :tangle ../_out/nopanel.sh
+#!/bin/bash
+<<create_site>>
+#+END_SRC
