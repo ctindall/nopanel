@@ -3,7 +3,7 @@
 
 Sometimes a shared webserver makes sense, but you still want to save your sanity. NoPanel is a solution to this need. It provides a minimal framework for organizing many Apache docroots on the same server, separating user accounts from one another, and performing other basic tasks like backups and site setup.
 
-More important, is what NoPanel doesnt do:
+More important is what NoPanel *doesn't* do:
 
  - It does not provide a web user interface for administration.
  - It does not require a database for administration.
@@ -13,135 +13,8 @@ More important, is what NoPanel doesnt do:
 I use this simple setup on my own servers, and thought it would be nice
 to share it with the community.
 
-* Quickstart
-
-** Installing
-NoPanel scripts live in =/root/bin/= and templates live in =/root/templates=. Because you, as the system administrator, are presumably root, and because distro maintainers typically do not like to muck about in /root/ with their packages, these are good places to put things so that they are not fucked with by other packages or scripts.
-
-** TODO create installation method
-
-* Sites
+** Sites
 In NoPanel, a "site" is a single domain, a single Apache config file, and a single docroot. There is no yaml, json, or other configuration file, so in order to keep everything straight, we need to rely on some conventions.
 
-** Creating Sites
-Each site in NoPanel requires a "name", which will be used as the name of the Linux system user (and group) that this site uses. Since you might be typing this quite often, take a second and think about what username you would like to use. While NoPanel technically doesn't care, it will be easier for you, a human, if you come up with some ration scheme.
+#+INCLUDE: org/create_site.sh
 
-Personally, I use the convention <client descriptor>_<site descriptor>. For example, if I were setting up two sites for Frank's Pet Shop and they had two domains, one for their public-facing site, and the other a private wiki for employees, I might call the two sites =franks_main= and =franks_wiki=.
-
-In any case, the =create_site.sh= script will need to know the name you choose, and the domain of the site:
-
-#+NAME: create_site_top
-#+BEGIN_SRC sh
-#!/bin/bash
-
-domain=$1
-user=$2
-#+END_SRC 
-
-The docroot of a site lives in in =/var/www/$domain=, and the Apache configuration lives in =/etc/-apache2/sites-available/$domain.conf.
-
-#+NAME: create_site_paths
-#+BEGIN_SRC sh 
-docroot="/var/www/$domain"
-conf="/etc/apache2/sites-available/$domain.conf"
-echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
-#+END_SRC
-
-
-We create the user without a homedir, /with/ a user group of the same name, and with no login shell (or more accurately, the login shell set to /bin/nologin. This is under the assumption that only you, root, will be messing with any of these files at all. Remember, there's no control panel here. In 2017, if a user knows enough to be logging into a shell, he can get his own VPS for $12 a year and doesn't want to be on your shared server.
-
-#+NAME: create_site_user_and_group
-#+BEGIN_SRC sh 
-echo -n "Creating new user and user-group..."
-useradd -M -U -s /bin/nologin "$user"
-echo "Done!"
-#+END_SRC
-
-The Apache config file is created using a template system from =/root/templates/site-template.conf=. Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values:
-
-#+NAME: create_site_conf
-#+BEGIN_SRC sh 
-echo -n "Creating new apache config '$conf'..."
-cp "/root/templates/site-template.conf" "/etc/apache2/sites-available/$domain.conf"
-sed -i "s/{domain}/$domain/g" "$conf"
-sed -i "s/{user}/$user/g" "$conf"
-echo "Done!"
-#+END_SRC
-
-The config itself is pretty straightforward. 
-
-#+NAME: site-template
-#+BEGIN_SRC apache2 :tangle root/templates/site-template.conf
-<VirtualHost *:8080>
-	ServerName {domain}
-	ServerAlias www.{domain}fuck
-
-	DocumentRoot /var/www/{domain}
-
-	LogLevel info
-
-	ErrorLog /var/log/apache2/{domain}-error.log
-	CustomLog /var/log/apache2/{domain}-access.log combined
-
-	AssignUserId {user} {user}
-</VirtualHost>
-#+END_SRC
-
-Notice that the VirtualHost listens on port 8080, since in my usual configuration, Apache is actually sitting behind some kind of front-end proxy or load balancer. This isn't always on the same machine, but I've standardized on having Apache listen on 8080 even when the load-balancer is on a different machine. As with other decisions in NoPanel, this one was made to reduce the amount of site-specific configuration that is necessary for the types of sites I typically deal with.
-
-As previously mentioned, the DocumentRoot is in =/var/www/$domain=. 
-
-=LogLevel info=, as is configured here, is one level above "debug" and logs quite a bit. I find this helpful when troubleshooting. With large disks, low-traffic sites, and proper log rotation, the volume is rarely a problem. To make it easy to find logs relating to a particular site, each domain has its own logs. I also separate error and access logs, so that I can have different rotation schedules for each.
-
-Now we're ready to create the docroot itself...
-
-#+NAME: create_site_docroot
-#+BEGIN_SRC sh 
-echo -n "Creating new document in '$docroot'..."
-mkdir -p "$docroot"
-echo "Done!"
-#+END_SRC
-
-...and to populated it with a test page:
-
-#+NAME: create_site_test_page
-#+BEGIN_SRC sh 
-echo -n "Creating test page at '$docroot/index.php'..."
-echo "<?php phpinfo(); ?>" > $docroot/index.php
-chown -R $user. $docroot
-echo "Done!"
-#+END_SRC
-
-The last thing we need to do is "enable" the site with =a2ensite= (which itself just symlinks the config file into =/etc/apache/sites-enabled/=) and reload the Apache config.
-
-#+NAME: create_site_enable
-#+BEGIN_SRC sh 
-a2ensite $domain
-
-echo -n "Reloading Apache..."
-service apache2 reload
-echo "Done!"
-
-echo "Test site should be available at 'http://$domain' (barring DNS fuckups)."
-#+END_SRC
-
-Like it says on the time, you should then be able to check out the =phpinfo()= page at the proper domain, provided DNS is set up, or you have the appropriate entries in your local hosts file.
-
-Taken together, the script then looks like this, a straightforward script about two-dozen non-blank lines:
-
-#+NAME: create_site
-#+BEGIN_SRC sh :padline no :tangle root/bin/create_site.sh :noweb yes
-<<create_site_top>>
-
-<<create_site_paths>>
-
-<<create_site_user_and_group>>
-
-<<create_site_docroot>>
-
-<<create_site_conf>>
-
-<<create_site_test_page>>
-
-<<create_site_enable>>
-#+END_SRC
