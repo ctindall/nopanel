@@ -1,6 +1,7 @@
 #+PROPERTY: :padline no
 
 *** Creating Sites
+
 Each site in NoPanel requires a "name", which will be used as the name of the Linux system user (and group) that this site uses. Since you might be typing this quite often, take a second and think about what username you would like to use. While NoPanel technically doesn't care, it will be easier for you, a human, if you come up with some ration scheme.
 
 Personally, I use the convention <client descriptor>_<site descriptor>. For example, if I were setting up two sites for Frank's Pet Shop and they had two domains, one for their public-facing site, and the other a private wiki for employees, I might call the two sites =franks_main= and =franks_wiki=.
@@ -9,8 +10,18 @@ In any case, the =create_site.sh= script will need to know the name you choose, 
 
 #+NAME: create_site_top
 #+BEGIN_SRC sh
-domain=$1
-user=$2
+  domain=$1
+  user=$2
+
+  if [[ "$domain" == "" ]]; then
+      echo "No domain provided." 1>&2
+      exit 1
+  fi
+
+  if [[ "$user" == "" ]]; then
+      echo "No user provided." 1>&2
+      exit 1
+  fi
 #+END_SRC 
 
 The docroot of a site lives in in =/var/www/$domain=, and the Apache configuration lives in =/etc/-apache2/sites-available/$domain.conf.
@@ -35,26 +46,42 @@ echo "Done!"
 The Apache config file is created using a template which looks like this: 
 
 #+NAME: create_site_conf_template
-#+INCLUDE: ../other/site-template.conf src
+#+BEGIN_SRC sh :exports code
+<VirtualHost *:8080>
+        ServerName {domain}
+        ServerAlias www.{domain}
 
-Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values. The template itself looks like this:
+        DocumentRoot /var/www/{domain}
+
+        LogLevel info
+
+        ErrorLog /var/log/apache2/{domain}-error.log
+        CustomLog /var/log/apache2/{domain}-access.log combined
+
+        AssignUserId {user} {user}
+</VirtualHost>
+#+END_SRC
+
+Rather than use a complex templating engine, we rely on a few =sed= expressions to replace "single-hug" placeholders with their actual values.
 
 #+NAME: create_site_conf
 #+BEGIN_SRC sh :padline no :noweb yes
-echo -n "Creating new apache config '$conf'..."
-cp "/root/templates/site-template.conf" "/etc/apache2/sites-available/$domain.conf"
-sed -e "s/{domain}/$domain/g" -e "s/{user}/$user/g" <<CONFTEMPLATE
+  conf_file=/etc/apache2/sites-available/$domain.conf
+  echo -n "Creating new apache config '$conf_file'..."
+  {
+      sed -e "s/{domain}/$domain/g" -e "s/{user}/$user/g" <<CONFTEMPLATE
 
-#+INCLUDE: ../other/site-template.conf export
+  <<create_site_conf_template>>
 
-CONFTEMPLATE
+  CONFTEMPLATE
+  }>$conf_file
 #+END_SRC
 
 Notice that the VirtualHost listens on port 8080, since in my usual configuration, Apache is actually sitting behind some kind of front-end proxy or load balancer. This isn't always on the same machine, but I've standardized on having Apache listen on 8080 even when the load-balancer is on a different machine. As with other decisions in NoPanel, this one was made to reduce the amount of site-specific configuration that is necessary for the types of sites I typically deal with.
 
 As previously mentioned, the DocumentRoot is in =/var/www/$domain=. 
 
-=LogLevel info=, as is configured here, is one level above "debug" and logs quite a bit. I find this helpful when troubleshooting. With large disks, low-traffic sites, and proper log rotation, the volume is rarely a problem. To make it easy to find logs relating to a particular site, each domain has its own logs. I also separate error and access logs, so that I can have different rotation schedules for each.
+=LogLevel info=, as is configured here, is one level above "debug" and logs quite a bit. I find this helpful when troubleshooting. With large disks, low-traffic sites, and proper log rotation, the volume is rarely a problem. To make it easy to find logs relating to a particular site, each domain has its own logs.
 
 Now we're ready to create the docroot itself...
 
@@ -65,7 +92,7 @@ mkdir -p "$docroot"
 echo "Done!"
 #+END_SRC
 
-...and to populated it with a test page:
+...and to populate it with a test page:
 
 #+NAME: create_site_test_page
 #+BEGIN_SRC sh 
@@ -85,7 +112,7 @@ echo -n "Reloading Apache..."
 service apache2 reload
 echo "Done!"
 
-echo "Test site should be available at 'http://$domain' (barring DNS fuckups)."
+echo "Test site should be available at 'http://$domain' (barring DNS snafus)."
 #+END_SRC
 
 Like it says on the time, you should then be able to check out the =phpinfo()= page at the proper domain, provided DNS is set up, or you have the appropriate entries in your local hosts file.
@@ -110,9 +137,3 @@ function create_site {
 <<create_site_enable>>
 }
 #+END_SRC 
-
-#+NAME: full_script
-#+BEGIN_SRC sh :padline no :noweb yes :exports none :tangle ../_out/nopanel.sh
-#!/bin/bash
-<<create_site>>
-#+END_SRC

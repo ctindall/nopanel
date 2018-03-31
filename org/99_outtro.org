@@ -1,0 +1,20 @@
+
+#+NAME: full_script
+#+BEGIN_SRC sh :noweb yes :padline no :exports none :tangle ../_out/nopanel.sh
+  #!/bin/bash
+  cmd="$1"
+  shift
+
+  if [[ "$cmd" == "" ]]; then
+      echo "No command provided." 1>&2
+      exit 1
+  fi
+
+  <<create_site>>
+
+  if [[ "$cmd" == "create_site" ]]; then
+      create_site "$1" "$2"
+  fi
+
+
+#+END_SRC
