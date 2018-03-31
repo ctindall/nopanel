@@ -1,7 +1,7 @@
-			      ___________
+				________
 
-			       ALL_FILES
-			      ___________
+				 BUNDLE
+				________
 
 
 Table of Contents
@@ -10,6 +10,7 @@ _________________
 1 NoPanel: multitenant hosting without the bloat
 .. 1.1 Sites
 ..... 1.1.1 Creating Sites
+..... 1.1.2 Deleting Sites
 
 
 1 NoPanel: multitenant hosting without the bloat
@@ -200,8 +201,8 @@ _________________
   `phpinfo()' page at the proper domain, provided DNS is set up, or you
   have the appropriate entries in your local hosts file.
 
-  Taken together, the script then looks like this, a straightforward
-  script of about two-dozen non-blank lines:
+  Taken together, we have a straightforward Bash function of about
+  two-dozen non-blank lines:
 
   ,----
   | function create_site {
@@ -264,5 +265,151 @@ _________________
   | echo "Done!"
   | 
   | echo "Test site should be available at 'http://$domain' (barring DNS snafus)."
+  | }
+  `----
+
+
+1.1.2 Deleting Sites
+--------------------
+
+  To delete a site from NoPanel, we need to be absolutely sure that we
+  need to know the domain of the site in question, and we need to be
+  darn sure that we aren't getting a blank domain and deleting all of
+  `/var/www':
+
+  ,----
+  | domain="$1"
+  | docroot="$(cd "/var/www/$domain"; pwd)"
+  | 
+  | if [[ "$domain" == "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -e "$docroot" ]]; then
+  |     echo "'$docroot' does not exist." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -d "$docroot" ]]; then
+  |     echo "'$docroot' is not a directory." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$docroot" == "/var/www" ]]; then
+  |     echo "Not deleting '$docroot'. Please double-check your input." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  Once we're sure of that, we can determine the Linux user for the site
+  in question, and make sure it's a sane one:
+
+  ,----
+  | user="$(stat -c "%U" "$docroot")"
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user found for site '$domain'." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "root" ]]; then
+  |     echo "Not deleting user '$user'." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  Next we need to find the config file for the site:
+
+  ,----
+  | conf_file="/etc/apache2/sites-available/$domain.conf"
+  | 
+  | if [[ ! -f "$conf_file" ]]; then
+  |     echo "Conf file '$conf_file' does not exist." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  Finally, we can start doing some damage. First, we disable the site's
+  config:
+
+  ,----
+  | a2dissite "$domain"
+  `----
+
+  Then, we delete the config file itself:
+  ,----
+  | rm "$conf_file"
+  `----
+
+  Remove the document root:
+  ,----
+  | rm -rfv "$docroot"
+  `----
+
+  Finally, we delete the user:
+  ,----
+  | userdel "$user"
+  `----
+
+  ...and reload the Apache config:
+
+  ,----
+  | service apache2 reload
+  `----
+
+  And that's it! That site won't bother us any more.
+
+  ,----
+  | function delete_site {
+  | domain="$1"
+  | docroot="$(cd "/var/www/$domain"; pwd)"
+  | 
+  | if [[ "$domain" == "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -e "$docroot" ]]; then
+  |     echo "'$docroot' does not exist." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -d "$docroot" ]]; then
+  |     echo "'$docroot' is not a directory." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$docroot" == "/var/www" ]]; then
+  |     echo "Not deleting '$docroot'. Please double-check your input." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | user="$(stat -c "%U" "$docroot")"
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user found for site '$domain'." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "root" ]]; then
+  |     echo "Not deleting user '$user'." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | conf_file="/etc/apache2/sites-available/$domain.conf"
+  | 
+  | if [[ ! -f "$conf_file" ]]; then
+  |     echo "Conf file '$conf_file' does not exist." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | a2dissite "$domain"
+  | 
+  | rm "$conf_file"
+  | 
+  | rm -rfv "$docroot"
+  | 
+  | userdel "$user"
   | }
   `----

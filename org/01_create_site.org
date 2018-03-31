@@ -117,7 +117,7 @@ echo "Test site should be available at 'http://$domain' (barring DNS snafus)."
 
 Like it says on the time, you should then be able to check out the =phpinfo()= page at the proper domain, provided DNS is set up, or you have the appropriate entries in your local hosts file.
 
-Taken together, the script then looks like this, a straightforward script of about two-dozen non-blank lines:
+Taken together, we have a straightforward Bash function of about two-dozen non-blank lines:
 
 #+NAME: create_site
 #+BEGIN_SRC sh :padline no :noweb yes

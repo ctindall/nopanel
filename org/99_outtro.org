@@ -1,6 +1,6 @@
 
 #+NAME: full_script
-#+BEGIN_SRC sh :noweb yes :padline no :exports none :tangle ../_out/nopanel.sh
+#+BEGIN_SRC sh :noweb yes :padline no :exports none :tangle _out/nopanel.sh
   #!/bin/bash
   cmd="$1"
   shift
@@ -12,8 +12,14 @@
 
   <<create_site>>
 
+  <<delete_site>>
+
   if [[ "$cmd" == "create_site" ]]; then
       create_site "$1" "$2"
+  fi
+
+  if [[ "$cmd" == "delete_site" ]]; then
+      delete_site "$1" "$2"
   fi
 
 
