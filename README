@@ -11,6 +11,7 @@ _________________
 .. 1.1 Sites
 ..... 1.1.1 Creating Sites
 ..... 1.1.2 Deleting Sites
+..... 1.1.3 Backing Up Sites
 
 
 1 NoPanel: multitenant hosting without the bloat
@@ -405,11 +406,87 @@ _________________
   | fi
   | 
   | a2dissite "$domain"
-  | 
   | rm "$conf_file"
-  | 
   | rm -rfv "$docroot"
-  | 
   | userdel "$user"
   | }
+  `----
+
+
+1.1.3 Backing Up Sites
+----------------------
+
+  Backing up a site in NoPanel results in a tidy single-file tarball
+  that contains the site's files, config, username, and (/Real Soon
+  Now/) dumps of its databases.
+
+  As always, we'll first sanity-check our input:
+
+  ,----
+  | domain="$1"
+  | docroot="$(cd "/var/www/$domain"; pwd)"
+  | user="$(stat -c "%U" "$docroot")"
+  | 
+  | if [[ "$domain" = "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user found for site '$domain'." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -e "$docroot" ]]; then
+  |     echo "'$docroot' does not exist." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -d "$docroot" ]]; then
+  |     echo "'$docroot' is not a directory." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$docroot" == "/var/www" ]]; then
+  |     echo "Not backing up all of '$docroot'. Please double-check your input." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  Next, we'll need a temporary directory to work in:
+
+  ,----
+  | tmpdir="$(mktemp -d)"
+  `----
+
+  Now we can move the files over:
+  ,----
+  | mkdir -p $tmpdir
+  | rsync -aP /var/www/$domain/ $tmpdir/docroot
+  | chown -R $user. $tmpdir/docroot
+  `----
+
+  ...save the username:
+
+  ,----
+  | echo "$user" > $tmpdir/USER
+  `----
+
+  ...and tar the whole thing up:
+
+  ,----
+  | cd $tmpdir
+  | tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
+  `----
+
+  Finally, we want to clean up our temporary files:
+
+  ,----
+  | rm -rf $tmpdir
+  `----
+
+  The finished function:
+
+  ,----
+  | "no noweb: yes"body
   `----

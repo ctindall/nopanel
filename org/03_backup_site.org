@@ -1,0 +1,92 @@
+*** Backing Up Sites
+    Backing up a site in NoPanel results in a tidy single-file tarball that contains the site's files, config, username, and (/Real Soon Now/) dumps of its databases.
+
+As always, we'll first sanity-check our input:
+
+#+NAME: backup_site_input_check
+#+BEGIN_SRC sh
+  domain="$1"
+  docroot="$(cd "/var/www/$domain"; pwd)"
+  user="$(stat -c "%U" "$docroot")"
+
+  if [[ "$domain" = "" ]]; then
+      echo "No domain provided." 1>&2
+      exit 1
+  fi
+
+  if [[ "$user" == "" ]]; then
+      echo "No user found for site '$domain'." 1>&2
+      exit 1
+  fi
+
+  if [[ ! -e "$docroot" ]]; then
+      echo "'$docroot' does not exist." 1>&2
+      exit 1
+  fi
+
+  if [[ ! -d "$docroot" ]]; then
+      echo "'$docroot' is not a directory." 1>&2
+      exit 1
+  fi
+
+  if [[ "$docroot" == "/var/www" ]]; then
+      echo "Not backing up all of '$docroot'. Please double-check your input." 1>&2
+      exit 1
+  fi
+
+#+END_SRC
+
+Next, we'll need a temporary directory to work in:
+
+#+NAME: backup_site_create_tempdir
+#+BEGIN_SRC sh
+  tmpdir="$(mktemp -d)"
+#+END_SRC
+
+Now we can move the files over:
+#+NAME: backup_site_copy_docroot
+#+BEGIN_SRC sh
+  mkdir -p $tmpdir
+  rsync -aP /var/www/$domain/ $tmpdir/docroot
+  chown -R $user. $tmpdir/docroot
+#+END_SRC
+
+...save the username:
+
+#+NAME: backup_site_save_username
+#+BEGIN_SRC sh
+  echo "$user" > $tmpdir/USER
+#+END_SRC
+
+...and tar the whole thing up:
+
+#+NAME: backup_site_tar_files
+#+BEGIN_SRC sh
+cd $tmpdir
+tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
+#+END_SRC
+
+Finally, we want to clean up our temporary files:
+
+#+NAME: backup_site_cleanup
+#+BEGIN_SRC sh
+rm -rf $tmpdir
+#+END_SRC
+
+The finished function:
+
+#+NAME: backup_site
+#+BEGIN_SRC sh padline: no noweb: yes
+function backup_site {
+
+<<backup_site_input_check>>
+
+<<backup_site_create_tempdir>>
+
+<<backup_site_copy_docroot>>
+
+<<backup_site_tar_files>>
+
+<<backup_site_cleanup>>
+}
+#+END_SRC

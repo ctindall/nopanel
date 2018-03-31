@@ -14,13 +14,21 @@
 
   <<delete_site>>
 
+  <<backup_site>>
+
   if [[ "$cmd" == "create_site" ]]; then
       create_site "$1" "$2"
+      exit 0
   fi
 
   if [[ "$cmd" == "delete_site" ]]; then
       delete_site "$1" "$2"
+      exit 0
   fi
 
+  if [[ "$cmd" == "backup_site" ]]; then
+      backup_site "$1" "$2"
+      exit 0
+  fi
 
 #+END_SRC

@@ -100,11 +100,8 @@ function delete_site {
 <<delete_site_find_conf_file>>
 
 <<delete_site_disable_conf>>
-
 <<delete_site_delete_conf>>
-
 <<delete_site_delete_docroot>>
-
 <<delete_site_delete_user>>
 }
 #+END_SRC
