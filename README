@@ -7,6 +7,262 @@
 Table of Contents
 _________________
 
+1 NoPanel: multitenant hosting without the bloat
+.. 1.1 Sites
+..... 1.1.1 Creating Sites
 
 
+1 NoPanel: multitenant hosting without the bloat
+================================================
 
+  Sometimes a shared webserver makes sense, but you still want to save
+  your sanity. NoPanel is a solution to this need. It provides a minimal
+  framework for organizing many Apache docroots on the same server,
+  separating user accounts from one another, and performing other basic
+  tasks like backups and site setup.
+
+  More important is what NoPanel *doesn't* do:
+
+  - It does not provide a web user interface for administration.
+  - It does not require a database for administration.
+  - It eschews magic files and other ersatz-databases wherever
+    applicable.
+  - It doesn't use a 4,000 line Perl script when 8 lines of bash will
+    do.
+
+  I use this simple setup on my own servers, and thought it would be
+  nice to share it with the community.
+
+
+1.1 Sites
+~~~~~~~~~
+
+  In NoPanel, a "site" is a single domain, a single Apache config file,
+  and a single docroot. There is no yaml, json, or other configuration
+  file, so in order to keep everything straight, we need to rely on some
+  conventions.
+
+
+1.1.1 Creating Sites
+--------------------
+
+  Each site in NoPanel requires a "name", which will be used as the name
+  of the Linux system user (and group) that this site uses. Since you
+  might be typing this quite often, take a second and think about what
+  username you would like to use. While NoPanel technically doesn't
+  care, it will be easier for you, a human, if you come up with some
+  ration scheme.
+
+  Personally, I use the convention <client descriptor>_<site
+  descriptor>. For example, if I were setting up two sites for Frank's
+  Pet Shop and they had two domains, one for their public-facing site,
+  and the other a private wiki for employees, I might call the two sites
+  `franks_main' and `franks_wiki'.
+
+  In any case, the `create_site.sh' script will need to know the name
+  you choose, and the domain of the site:
+
+  ,----
+  | domain=$1
+  | user=$2
+  | 
+  | if [[ "$domain" == "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user provided." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  The docroot of a site lives in in `/var/www/$domain', and the Apache
+  configuration lives in =/etc/-apache2/sites-available/$domain.conf.
+
+  ,----
+  | docroot="/var/www/$domain"
+  | conf="/etc/apache2/sites-available/$domain.conf"
+  | echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
+  `----
+
+
+  We create the user without a homedir, /with/ a user group of the same
+  name, and with no login shell (or more accurately, the login shell set
+  to /bin/nologin. This is under the assumption that only you, root,
+  will be the only one messing with these files at all. Remember,
+  there's no control panel here. In 2018, if a user knows enough to be
+  logging into a shell, he can get his own VPS for $12 a year and
+  doesn't want to be on your shared server.
+
+  ,----
+  | echo -n "Creating new user and user-group..."
+  | useradd -M -U -s /bin/nologin "$user"
+  | echo "Done!"
+  `----
+
+  The Apache config file is created using a template which looks like
+  this:
+
+  ,----
+  | <VirtualHost *:8080>
+  | 	ServerName {domain}
+  | 	ServerAlias www.{domain}
+  | 
+  | 	DocumentRoot /var/www/{domain}
+  | 
+  | 	LogLevel info
+  | 
+  | 	ErrorLog /var/log/apache2/{domain}-error.log
+  | 	CustomLog /var/log/apache2/{domain}-access.log combined
+  | 
+  | 	AssignUserId {user} {user}
+  | </VirtualHost>
+  `----
+
+  Rather than use a complex templating engine, we rely on a few `sed'
+  expressions to replace "single-hug" placeholders with their actual
+  values.
+
+  ,----
+  | conf_file=/etc/apache2/sites-available/$domain.conf
+  | echo -n "Creating new apache config '$conf_file'..."
+  | {
+  |     sed -e "s/{domain}/$domain/g" -e "s/{user}/$user/g" <<CONFTEMPLATE
+  | 
+  | <VirtualHost *:8080>
+  | 	ServerName {domain}
+  | 	ServerAlias www.{domain}
+  | 
+  | 	DocumentRoot /var/www/{domain}
+  | 
+  | 	LogLevel info
+  | 
+  | 	ErrorLog /var/log/apache2/{domain}-error.log
+  | 	CustomLog /var/log/apache2/{domain}-access.log combined
+  | 
+  | 	AssignUserId {user} {user}
+  | </VirtualHost>
+  | 
+  | CONFTEMPLATE
+  | }>$conf_file
+  `----
+
+  Notice that the VirtualHost listens on port 8080, since in my usual
+  configuration, Apache is actually sitting behind some kind of
+  front-end proxy or load balancer. This isn't always on the same
+  machine, but I've standardized on having Apache listen on 8080 even
+  when the load-balancer is on a different machine. As with other
+  decisions in NoPanel, this one was made to reduce the amount of
+  site-specific configuration that is necessary for the types of sites I
+  typically deal with.
+
+  As previously mentioned, the DocumentRoot is in `/var/www/$domain'.
+
+  `LogLevel info', as is configured here, is one level above "debug" and
+  logs quite a bit. I find this helpful when troubleshooting. With large
+  disks, low-traffic sites, and proper log rotation, the volume is
+  rarely a problem. To make it easy to find logs relating to a
+  particular site, each domain has its own logs.
+
+  Now we're ready to create the docroot itself...
+
+  ,----
+  | echo -n "Creating new document in '$docroot'..."
+  | mkdir -p "$docroot"
+  | echo "Done!"
+  `----
+
+  ...and to populate it with a test page:
+
+  ,----
+  | echo -n "Creating test page at '$docroot/index.php'..."
+  | echo "<?php phpinfo(); ?>" > $docroot/index.php
+  | chown -R $user. $docroot
+  | echo "Done!"
+  `----
+
+  The last thing we need to do is "enable" the site with `a2ensite'
+  (which itself just symlinks the config file into
+  `/etc/apache/sites-enabled/') and reload the Apache config.
+
+  ,----
+  | a2ensite $domain
+  | 
+  | echo -n "Reloading Apache..."
+  | service apache2 reload
+  | echo "Done!"
+  | 
+  | echo "Test site should be available at 'http://$domain' (barring DNS snafus)."
+  `----
+
+  Like it says on the time, you should then be able to check out the
+  `phpinfo()' page at the proper domain, provided DNS is set up, or you
+  have the appropriate entries in your local hosts file.
+
+  Taken together, the script then looks like this, a straightforward
+  script of about two-dozen non-blank lines:
+
+  ,----
+  | function create_site {
+  | domain=$1
+  | user=$2
+  | 
+  | if [[ "$domain" == "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | docroot="/var/www/$domain"
+  | conf="/etc/apache2/sites-available/$domain.conf"
+  | echo -e "I'll try to create a site with domain '$domain' and matching user '$user'.\n"
+  | 
+  | echo -n "Creating new user and user-group..."
+  | useradd -M -U -s /bin/nologin "$user"
+  | echo "Done!"
+  | 
+  | echo -n "Creating new document in '$docroot'..."
+  | mkdir -p "$docroot"
+  | echo "Done!"
+  | 
+  | conf_file=/etc/apache2/sites-available/$domain.conf
+  | echo -n "Creating new apache config '$conf_file'..."
+  | {
+  |     sed -e "s/{domain}/$domain/g" -e "s/{user}/$user/g" <<CONFTEMPLATE
+  | 
+  | <VirtualHost *:8080>
+  | 	ServerName {domain}
+  | 	ServerAlias www.{domain}
+  | 
+  | 	DocumentRoot /var/www/{domain}
+  | 
+  | 	LogLevel info
+  | 
+  | 	ErrorLog /var/log/apache2/{domain}-error.log
+  | 	CustomLog /var/log/apache2/{domain}-access.log combined
+  | 
+  | 	AssignUserId {user} {user}
+  | </VirtualHost>
+  | 
+  | CONFTEMPLATE
+  | }>$conf_file
+  | 
+  | echo -n "Creating test page at '$docroot/index.php'..."
+  | echo "<?php phpinfo(); ?>" > $docroot/index.php
+  | chown -R $user. $docroot
+  | echo "Done!"
+  | 
+  | a2ensite $domain
+  | 
+  | echo -n "Reloading Apache..."
+  | service apache2 reload
+  | echo "Done!"
+  | 
+  | echo "Test site should be available at 'http://$domain' (barring DNS snafus)."
+  | }
+  `----
