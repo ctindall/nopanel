@@ -87,6 +87,15 @@
           default_backend apache
 #+END_SRC
 
+#+NAME: haproxy_config_backends
+#+BEGIN_SRC conf
+  backend apache
+          server hweb 127.0.0.1:8080
+
+  backend api
+          server api 127.0.0.1:5000
+#+END_SRC
+
      The =https-in= backend listens on port 443 on all interfaces, and terminates connections based on the certs it finds in =/etc/haproxy/certs=. For good measure, we also set the =X-Forwarded-Proto= header so that downstream applications know that we're terminating SSL ahead of them. We'll talk about the rest later, but the =acme= ACL will make sure that, not matter where any other traffic for this domain ultimately goes (to another box, to some non-Apache daemon locally, to the moon, whatever), that requests beginning with =/.well-known/acme-challenge= will be sent to Apache.
 
      This is important because Let's Encrypt validates your ownership of a domain, and therefore allows you to get a cert for it, by making your prove that you can post arbitrary files somewhere below that path. With that in place, we can build our certificate renewal function.
@@ -162,20 +171,13 @@
 #+NAME: haproxy_config
 #+BEGIN_SRC conf padline: no exports: none
 <<haproxy_config_global>>
+
 <<haproxy_config_defaults>>
+
 <<haproxy_config_http>>
+
 <<haproxy_config_https>>
-#+END_SRC
 
-#+NAME: install_haproxy
-#+BEGIN_SRC sh padline: no noweb: yes exports: none
-  function install_haproxy {
-  apt-get install haproxy
-
-  {
-      echo <<HAPROXYCONF
-   <<haproxy_config>>
-  HAPROXYCONF
-  }>/etc/haproxy/haproxy.cfg
+<<haproxy_config_backends>>
 #+END_SRC
 

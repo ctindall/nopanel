@@ -20,6 +20,8 @@
 
   <<renew_cert>>
 
+  <<install>>
+
   if [[ "$cmd" == "create_site" ]]; then
       create_site "$1" "$2"
       exit 0
@@ -42,6 +44,11 @@
 
   if [[ "$cmd" == "renew_cert" ]]; then
       renew_cert "$1" "$2"
+      exit 0
+  fi
+
+  if [[ "$cmd" == "install" ]]; then
+      install "$1" "$2"
       exit 0
   fi
 

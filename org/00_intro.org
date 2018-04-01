@@ -1,4 +1,5 @@
 #+PROPERTY: :padline no
+#+TITLE: NoPanel
 * NoPanel: multitenant hosting without the bloat
 
 Sometimes a shared webserver makes sense, but you still want to save your sanity. NoPanel is a solution to this need. It provides a minimal framework for organizing many Apache docroots on the same server, separating user accounts from one another, and performing other basic tasks like backups and site setup.

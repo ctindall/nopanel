@@ -1,0 +1,48 @@
+** Installation
+    So far, we've talked only about things that can be done once your server is already set up and running NoPanel. What, you might ask, do I do if I'm starting from a bare-nothing Ubuntu install? Fear not. NoPanel is intended to be simple to install. In fact, it's a single shellscript, =nopanel.sh=, which you will want to copy somewhere in your path and =chmod +x=.
+
+#+BEGIN_SRC sh
+~# cp nopanel.sh /usr/bin
+#+END_SRC
+
+Next, avail yourself of the =nopanel.sh install= command. It's quite a simple little function. First, we install all the necessary system packages:
+
+#+NAME: install_packages
+#+BEGIN_SRC sh
+  apt-get install -y haproxy apache2 bc letsencrypt php-imagick php-pear php-pecl-http php7.0 php7.0-bcmath php7.0-bz2 php7.0-cgi php7.0-cli php7.0-common php7.0-curl php7.0-dba php7.0-dev php7.0-enchant php7.0-fpm php7.0-gd php7.0-gmp php7.0-imap php7.0-interbase php7.0-intl php7.0-json php7.0-ldap php7.0-mbstring php7.0-mysql php7.0-sqlite3 php7.0-sybase php7.0-tidy php7.0-xml php7.0-xmlrpc php7.0-xsl php7.0-zip
+#+END_SRC
+
+Next, we install the HAproxy configuration:
+
+#+NAME: install_haproxy_config
+#+BEGIN_SRC sh
+  {
+      cat <<HAPROXYCONF
+      <<haproxy_config>>
+  HAPROXYCONF
+  }>/etc/haproxy/haproxy.cfg
+#+END_SRC
+
+Finally, start Apache and HAproxy. Actually, we stop them first, in case one or the other is already running.
+
+#+NAME: install_start_services
+#+BEGIN_SRC sh
+service apache2 stop
+service apache2 start
+
+service haproxy stop
+service haproxy start
+#+END_SRC
+
+This leaves us with a few lines to get our system up and running:
+
+#+NAME: install
+#+BEGIN_SRC sh padline: no noweb: yes
+function install {
+<<install_packages>>
+
+<<install_haproxy_config>>
+
+<<install_start_services>>
+}
+#+END_SRC

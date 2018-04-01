@@ -1,7 +1,7 @@
-				________
+			       _________
 
-				 BUNDLE
-				________
+				NOPANEL
+			       _________
 
 
 Table of Contents
@@ -14,6 +14,7 @@ _________________
 ..... 1.1.3 Backing Up Sites
 ..... 1.1.4 Listing Sites
 ..... 1.1.5 Managing Certificates
+.. 1.2 Installation
 
 
 1 NoPanel: multitenant hosting without the bloat
@@ -557,6 +558,14 @@ _________________
   | "code"body
   `----
 
+  ,----
+  | backend apache
+  | 	server hweb 127.0.0.1:8080
+  | 
+  | backend api
+  | 	server api 127.0.0.1:5000
+  `----
+
   The `https-in' backend listens on port 443 on all interfaces, and
   terminates connections based on the certs it finds in
   `/etc/haproxy/certs'. For good measure, we also set the
@@ -654,6 +663,52 @@ _________________
   | "no exports: none"body
   `----
 
+
+1.2 Installation
+~~~~~~~~~~~~~~~~
+
+  So far, we've talked only about things that can be done once your
+  server is already set up and running NoPanel. What, you might ask, do
+  I do if I'm starting from a bare-nothing Ubuntu install? Fear
+  not. NoPanel is intended to be simple to install. In fact, it's a
+  single shellscript, `nopanel.sh', which you will want to copy
+  somewhere in your path and `chmod +x'.
+
   ,----
-  | "no noweb: yes exports: none"body
+  | ~# cp nopanel.sh /usr/bin
+  `----
+
+  Next, avail yourself of the `nopanel.sh install' command. It's quite a
+  simple little function. First, we install all the necessary system
+  packages:
+
+  ,----
+  | apt-get install -y haproxy apache2 bc letsencrypt php-imagick php-pear php-pecl-http php7.0 php7.0-bcmath php7.0-bz2 php7.0-cgi php7.0-cli php7.0-common php7.0-curl php7.0-dba php7.0-dev php7.0-enchant php7.0-fpm php7.0-gd php7.0-gmp php7.0-imap php7.0-interbase php7.0-intl php7.0-json php7.0-ldap php7.0-mbstring php7.0-mysql php7.0-sqlite3 php7.0-sybase php7.0-tidy php7.0-xml php7.0-xmlrpc php7.0-xsl php7.0-zip
+  `----
+
+  Next, we install the HAproxy configuration:
+
+  ,----
+  | {
+  |     cat <<HAPROXYCONF
+  |     <<haproxy_config>>
+  | HAPROXYCONF
+  | }>/etc/haproxy/haproxy.cfg
+  `----
+
+  Finally, start Apache and HAproxy. Actually, we stop them first, in
+  case one or the other is already running.
+
+  ,----
+  | service apache2 stop
+  | service apache2 start
+  | 
+  | service haproxy stop
+  | service haproxy start
+  `----
+
+  This leaves us with a few lines to get our system up and running:
+
+  ,----
+  | "no noweb: yes"body
   `----
