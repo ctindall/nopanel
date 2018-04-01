@@ -16,6 +16,10 @@
 
   <<backup_site>>
 
+  <<list_sites>>
+
+  <<renew_cert>>
+
   if [[ "$cmd" == "create_site" ]]; then
       create_site "$1" "$2"
       exit 0
@@ -30,5 +34,18 @@
       backup_site "$1" "$2"
       exit 0
   fi
+
+  if [[ "$cmd" == "list_sites" ]]; then
+      list_sites "$1" "$2"
+      exit 0
+  fi
+
+  if [[ "$cmd" == "renew_cert" ]]; then
+      renew_cert "$1" "$2"
+      exit 0
+  fi
+
+  echo "Command '$cmd' is not available." 1>&2
+  exit 1
 
 #+END_SRC

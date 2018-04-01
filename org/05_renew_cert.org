@@ -1,0 +1,181 @@
+*** Managing Certificates
+    The [[https://letsencrypt.org/][Let's Encrypt Project]] is a wonderful thing. They run a Certificate Authority and provide totally-automated provisioning of free SSL certificates. While they don't (yet) off all the goodies of a "real" CA like extended validation, and the supplied certs are only good for 90 days, it's still a really good option for most sites. 
+
+    NoPanel uses an HAProxy layer in front of all HTTP/HTTPS connections, which is the perfect place to terminate TLS connections. If you haven't already, use the =nopanel.sh install= command to install and configure HAProxy for your NoPanel environment.
+
+**** Installing or Renewing Certificates
+     As mentioned, Let's Encrypt certificates have short validity periods, so unless you want to be manually validating and re-installing every 3 months, it's best to put some automation in place. 
+
+     Our HAProxy config is our first ally in renewing our cert:
+
+#+NAME: haproxy_config_global
+#+BEGIN_SRC conf exports: none
+  global
+          log /dev/log    local0
+          log /dev/log    local1 notice
+          chroot /var/lib/haproxy
+          stats socket /run/haproxy/admin.sock mode 660 level admin
+          stats timeout 30s
+          user haproxy
+          group haproxy
+          daemon
+
+          # Default SSL material locations
+          ca-base /etc/ssl/certs
+          crt-base /etc/ssl/private
+
+          # Default ciphers to use on SSL-enabled listening sockets.
+          # For more information, see ciphers(1SSL). This list is from:
+          #  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
+          ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+          ssl-default-bind-options no-sslv3
+#+END_SRC
+
+#+NAME: haproxy_config_defaults
+#+BEGIN_SRC conf exports: none
+  defaults
+          log     global
+          mode    http
+          option  httplog
+          option  dontlognull
+          timeout connect 5000
+          timeout client  50000
+          timeout server  50000
+          errorfile 400 /etc/haproxy/errors/400.http
+          errorfile 403 /etc/haproxy/errors/403.http
+          errorfile 408 /etc/haproxy/errors/408.http
+          errorfile 500 /etc/haproxy/errors/500.http
+          errorfile 502 /etc/haproxy/errors/502.http
+          errorfile 503 /etc/haproxy/errors/503.http
+          errorfile 504 /etc/haproxy/errors/504.http
+#+END_SRC
+
+#+NAME: haproxy_config_http
+#+BEGIN_SRC conf exports: none
+  frontend http-in
+          bind *:80
+
+          #domains in no_ssl.lst shouldn't be redirected to HTTPS
+          acl no_ssl_host hdr(Host) -f /etc/haproxy/no_ssl.lst
+          redirect scheme https code 301 if !{ ssl_fc } !no_ssl_host
+
+          #mark ACME (Let's Encrypt) challenge requests
+          acl acme path_beg /.well-known/acme-challenge/
+          
+          # domains in api.lst should be proxied to the API server
+          acl api_host hdr(Host) -f /etc/haproxy/api.lst
+          use_backend api if api_host !acme #unless they're ACME challenges
+
+          default_backend apache
+#+END_SRC
+     
+     In particular, we want to look at the =https-in= frontend. This will be doing some of the work for us.
+
+#+NAME: haproxy_config_https
+#+BEGIN_SRC conf exports: code
+  frontend https-in
+          bind *:443 ssl crt /etc/haproxy/certs/
+          http-request set-header X-Forwarded-Proto https
+
+          #mark ACME (Let's Encrypt) challenge requests
+          acl acme path_beg /.well-known/acme-challenge/
+
+          # domains in api.lst should be proxied to the API server
+          acl api_host hdr(Host) -f /etc/haproxy/api.lst
+          use_backend api if api_host !acme #unless they're ACME challenges
+
+          default_backend apache
+#+END_SRC
+
+     The =https-in= backend listens on port 443 on all interfaces, and terminates connections based on the certs it finds in =/etc/haproxy/certs=. For good measure, we also set the =X-Forwarded-Proto= header so that downstream applications know that we're terminating SSL ahead of them. We'll talk about the rest later, but the =acme= ACL will make sure that, not matter where any other traffic for this domain ultimately goes (to another box, to some non-Apache daemon locally, to the moon, whatever), that requests beginning with =/.well-known/acme-challenge= will be sent to Apache.
+
+     This is important because Let's Encrypt validates your ownership of a domain, and therefore allows you to get a cert for it, by making your prove that you can post arbitrary files somewhere below that path. With that in place, we can build our certificate renewal function.
+
+     As usual, we start off with some configuration and input checking:
+
+#+NAME: renew_cert_input_check
+#+BEGIN_SRC sh
+  expiration_cutoff=14 #minimum number of days before expiration to renew the cert
+  domain="$1"
+  webroot="/var/www/$domain"
+  haproxy_cert_dir="/etc/haproxy/certs"
+  letsencrypt_basedir=/etc/letsencrypt
+  certfile="$letsencrypt_basedir/live/$domain/cert.pem"
+  email="inquiries@exactatechnologies.com"
+
+  if [[ ! -d "$webroot" ]]; then
+      echo "There is no directory '$webroot'." 1>&2
+      exit 1
+  fi
+#+END_SRC
+
+     In order to be nice to the Let's Encrypt server infrastructure, we don't actually want to call out to try to validate unless it's necessary. To do so, we'll calculaute how many days are left until expiration of our cert. If it's under =$expiration_cutoff=, we'll just skip it for now. I set this to 2 weeks to give me plenty of time to manuall renew a cert if something goes wrong here. To do the actual calculation, we need to know what time it is now, in seconds since the Unix epoch. We also need to know when the cert expires, which we ascertain by using the =openssl= binary to dump the cert, then grep out the "Not After" header. Finally, we subtract the two and convert the result to days. For floating point calculations like this in shell scripts, I like to call out to =bc=, the *nix arbitrary precision calculator. If there is no cert yet, assume it expires today to force a "renewal".
+
+#+NAME: renew_cert_calculate
+#+BEGIN_SRC sh
+        if [[ -e "$certfile" ]]
+        then
+            timestamp_now=$(date -d "now" +%s)
+            expiration_timestamp=$(date -d "$(openssl x509 -in $certfile -text -noout|grep "Not After"| cut -c 25-)" +%s)
+            days_until_expiration=$(echo \( $expiration_timestamp - $timestamp_now \) / 86400 | bc)
+        else
+            days_until_expiration=0
+        fi
+#+END_SRC
+
+     The actual ACME validation is handled by the =letsencrypt= command. We use the =-w= switch to force it into "webroot" mode, using the Apache docroot to prove that we are able to post the validation key to =/.well-known/acme-challenge/=. If we succeed, we still need to stitch together the =fullchain.pem= and =privkey.pem= files that the =letsencrypt= tool gives us into one file, since that's the format HAProxy expects.
+
+#+NAME: renew_cert_do_challenge
+#+BEGIN_SRC sh
+  if [[ "$days_until_expiration" -lt "$expiration_cutoff" ]]
+  then
+      for d in "$domain" "www.$domain"
+      do  
+          if  letsencrypt certonly \
+                          --webroot \
+                          --keep-until-expiring \
+                          --email "$email" \
+                          --agree-tos \
+                          -w $webroot \
+                          -d $d
+          then
+              cat /etc/letsencrypt/live/$d/fullchain.pem \
+                  /etc/letsencrypt/live/$d/privkey.pem > $haproxy_cert_dir/$d.pem
+              
+              service haproxy reload
+          fi
+      done
+  fi
+#+END_SRC
+
+#+NAME: renew_cert
+#+BEGIN_SRC sh padline: no noweb: yes
+  function renew_cert {
+<<renew_cert_input_check>>      
+
+<<renew_cert_calculate>>
+
+<<renew_cert_do_challenge>>
+  }
+#+END_SRC
+
+#+NAME: haproxy_config
+#+BEGIN_SRC conf padline: no exports: none
+<<haproxy_config_global>>
+<<haproxy_config_defaults>>
+<<haproxy_config_http>>
+<<haproxy_config_https>>
+#+END_SRC
+
+#+NAME: install_haproxy
+#+BEGIN_SRC sh padline: no noweb: yes exports: none
+  function install_haproxy {
+  apt-get install haproxy
+
+  {
+      echo <<HAPROXYCONF
+   <<haproxy_config>>
+  HAPROXYCONF
+  }>/etc/haproxy/haproxy.cfg
+#+END_SRC
+

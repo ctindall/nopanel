@@ -12,6 +12,8 @@ _________________
 ..... 1.1.1 Creating Sites
 ..... 1.1.2 Deleting Sites
 ..... 1.1.3 Backing Up Sites
+..... 1.1.4 Listing Sites
+..... 1.1.5 Managing Certificates
 
 
 1 NoPanel: multitenant hosting without the bloat
@@ -489,4 +491,169 @@ _________________
 
   ,----
   | "no noweb: yes"body
+  `----
+
+
+1.1.4 Listing Sites
+-------------------
+
+  So far, we can create, delete, and backup NoPanel sites. What if we
+  just want to list them? Due to the "convention over configuration"
+  approach NoPanel takes, this is actually just a one liner, but we'll
+  pack the functionality into the final script anyway.
+
+  ,----
+  | "no noweb: yes"body
+  `----
+
+  This simply finds all directories immediately beneath `/var/www' and
+  filters out the default `html' directory that Ubuntu provides, as well
+  as the `htpasswd' dir, where we keep Apache credential files (more on
+  this later).
+
+
+1.1.5 Managing Certificates
+---------------------------
+
+  The [Let's Encrypt Project] is a wonderful thing. They run a
+  Certificate Authority and provide totally-automated provisioning of
+  free SSL certificates. While they don't (yet) off all the goodies of a
+  "real" CA like extended validation, and the supplied certs are only
+  good for 90 days, it's still a really good option for most sites.
+
+  NoPanel uses an HAProxy layer in front of all HTTP/HTTPS connections,
+  which is the perfect place to terminate TLS connections. If you
+  haven't already, use the `nopanel.sh install' command to install and
+  configure HAProxy for your NoPanel environment.
+
+
+  [Let's Encrypt Project] https://letsencrypt.org/
+
+
+* 1.1.5.1 Installing or Renewing Certificates
+
+  As mentioned, Let's Encrypt certificates have short validity periods,
+  so unless you want to be manually validating and re-installing every 3
+  months, it's best to put some automation in place.
+
+  Our HAProxy config is our first ally in renewing our cert:
+
+  ,----
+  | "none"body
+  `----
+
+  ,----
+  | "none"body
+  `----
+
+  ,----
+  | "none"body
+  `----
+
+  In particular, we want to look at the `https-in' frontend. This will
+  be doing some of the work for us.
+
+  ,----
+  | "code"body
+  `----
+
+  The `https-in' backend listens on port 443 on all interfaces, and
+  terminates connections based on the certs it finds in
+  `/etc/haproxy/certs'. For good measure, we also set the
+  `X-Forwarded-Proto' header so that downstream applications know that
+  we're terminating SSL ahead of them. We'll talk about the rest later,
+  but the `acme' ACL will make sure that, not matter where any other
+  traffic for this domain ultimately goes (to another box, to some
+  non-Apache daemon locally, to the moon, whatever), that requests
+  beginning with `/.well-known/acme-challenge' will be sent to Apache.
+
+  This is important because Let's Encrypt validates your ownership of a
+  domain, and therefore allows you to get a cert for it, by making your
+  prove that you can post arbitrary files somewhere below that
+  path. With that in place, we can build our certificate renewal
+  function.
+
+  As usual, we start off with some configuration and input checking:
+
+  ,----
+  | expiration_cutoff=14 #minimum number of days before expiration to renew the cert
+  | domain="$1"
+  | webroot="/var/www/$domain"
+  | haproxy_cert_dir="/etc/haproxy/certs"
+  | letsencrypt_basedir=/etc/letsencrypt
+  | certfile="$letsencrypt_basedir/live/$domain/cert.pem"
+  | email="inquiries@exactatechnologies.com"
+  | 
+  | if [[ ! -d "$webroot" ]]; then
+  |     echo "There is no directory '$webroot'." 1>&2
+  |     exit 1
+  | fi
+  `----
+
+  In order to be nice to the Let's Encrypt server infrastructure, we
+  don't actually want to call out to try to validate unless it's
+  necessary. To do so, we'll calculaute how many days are left until
+  expiration of our cert. If it's under `$expiration_cutoff', we'll just
+  skip it for now. I set this to 2 weeks to give me plenty of time to
+  manuall renew a cert if something goes wrong here. To do the actual
+  calculation, we need to know what time it is now, in seconds since the
+  Unix epoch. We also need to know when the cert expires, which we
+  ascertain by using the `openssl' binary to dump the cert, then grep
+  out the "Not After" header. Finally, we subtract the two and convert
+  the result to days. For floating point calculations like this in shell
+  scripts, I like to call out to `bc', the *nix arbitrary precision
+  calculator. If there is no cert yet, assume it expires today to force
+  a "renewal".
+
+  ,----
+  | if [[ -e "$certfile" ]]
+  | then
+  |     timestamp_now=$(date -d "now" +%s)
+  |     expiration_timestamp=$(date -d "$(openssl x509 -in $certfile -text -noout|grep "Not After"| cut -c 25-)" +%s)
+  |     days_until_expiration=$(echo \( $expiration_timestamp - $timestamp_now \) / 86400 | bc)
+  | else
+  |     days_until_expiration=0
+  | fi
+  `----
+
+  The actual ACME validation is handled by the `letsencrypt' command. We
+  use the `-w' switch to force it into "webroot" mode, using the Apache
+  docroot to prove that we are able to post the validation key to
+  `/.well-known/acme-challenge/'. If we succeed, we still need to stitch
+  together the `fullchain.pem' and `privkey.pem' files that the
+  `letsencrypt' tool gives us into one file, since that's the format
+  HAProxy expects.
+
+  ,----
+  | if [[ "$days_until_expiration" -lt "$expiration_cutoff" ]]
+  | then
+  |     for d in "$domain" "www.$domain"
+  |     do  
+  | 	if  letsencrypt certonly \
+  | 			--webroot \
+  | 			--keep-until-expiring \
+  | 			--email "$email" \
+  | 			--agree-tos \
+  | 			-w $webroot \
+  | 			-d $d
+  | 	then
+  | 	    cat /etc/letsencrypt/live/$d/fullchain.pem \
+  | 		/etc/letsencrypt/live/$d/privkey.pem > $haproxy_cert_dir/$d.pem
+  | 
+  | 	    service haproxy reload
+  | 	fi
+  |     done
+  | fi
+  `----
+
+  ,----
+  | "no noweb: yes"body
+  `----
+
+  ,----
+  | "no exports: none"body
+  `----
+
+  ,----
+  | "no noweb: yes exports: none"body
   `----
