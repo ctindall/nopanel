@@ -36,7 +36,7 @@ service haproxy reload
 This leaves us with a few lines to get our system up and running:
 
 #+NAME: install
-#+BEGIN_SRC sh padline: no noweb: yes
+#+BEGIN_SRC sh :padline no :noweb yes
 function install {
 <<install_packages>>
 

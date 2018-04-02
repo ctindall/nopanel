@@ -78,7 +78,7 @@ cd "$olddir"
 The finished function:
 
 #+NAME: backup_site
-#+BEGIN_SRC sh padline: no noweb: yes
+#+BEGIN_SRC sh :padline no :noweb yes
 function backup_site {
 
 <<backup_site_input_check>>
@@ -99,6 +99,9 @@ function backup_site {
 #+NAME: backup_all
 #+BEGIN_SRC sh
   function backup_all {
-      list_sites | awk '{print $1}' | while read d; do backup_site "$d"; done
+      list_sites | awk '{print $1}' | while read domain;
+      do
+          backup_site "$domain";
+      done
   }
 #+END_SRC

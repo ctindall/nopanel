@@ -2,7 +2,7 @@
     So far, we can create, delete, and backup NoPanel sites. What if we just want to list them? Due to the "convention over configuration" approach NoPanel takes, this is actually just a one liner, but we'll pack the functionality into the final script anyway.
 
 #+NAME: list_sites
-#+BEGIN_SRC sh padline: no noweb: yes
+#+BEGIN_SRC sh :padline no :noweb yes
 function list_sites {
 find  /var/www/ -mindepth 1 -maxdepth 1 -type d -printf '%f\t%u\n' | grep -v ^\\. | grep -v ^html | grep -v ^htpasswd
 }

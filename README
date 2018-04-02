@@ -494,7 +494,51 @@ _________________
   The finished function:
 
   ,----
-  | "no noweb: yes"body
+  | function backup_site {
+  | 
+  | domain="$1"
+  | docroot="$(cd "/var/www/$domain"; pwd)"
+  | user="$(stat -c "%U" "$docroot")"
+  | 
+  | if [[ "$domain" = "" ]]; then
+  |     echo "No domain provided." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$user" == "" ]]; then
+  |     echo "No user found for site '$domain'." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -e "$docroot" ]]; then
+  |     echo "'$docroot' does not exist." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ ! -d "$docroot" ]]; then
+  |     echo "'$docroot' is not a directory." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | if [[ "$docroot" == "/var/www" ]]; then
+  |     echo "Not backing up all of '$docroot'. Please double-check your input." 1>&2
+  |     exit 1
+  | fi
+  | 
+  | 
+  | tmpdir="$(mktemp -d)"
+  | 
+  | mkdir -p $tmpdir
+  | rsync -aP /var/www/$domain/ $tmpdir/docroot
+  | chown -R $user. $tmpdir/docroot
+  | 
+  | olddir="$(pwd)"
+  | cd $tmpdir
+  | tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
+  | 
+  | rm -rf $tmpdir
+  | cd "$olddir"
+  | }
   `----
 
 
@@ -506,7 +550,10 @@ _________________
 
   ,----
   | function backup_all {
-  |     list_sites | awk '{print $1}' | while read d; do backup_site "$d"; done
+  |     list_sites | awk '{print $1}' | while read domain;
+  |     do
+  | 	backup_site "$domain";
+  |     done
   | }
   `----
 
@@ -520,7 +567,9 @@ _________________
   pack the functionality into the final script anyway.
 
   ,----
-  | "no noweb: yes"body
+  | function list_sites {
+  | find  /var/www/ -mindepth 1 -maxdepth 1 -type d -printf '%f\t%u\n' | grep -v ^\\. | grep -v ^html | grep -v ^htpasswd
+  | }
   `----
 
   This simply finds all directories immediately beneath `/var/www' and
@@ -553,25 +602,24 @@ _________________
   so unless you want to be manually validating and re-installing every 3
   months, it's best to put some automation in place.
 
-  Our HAProxy config is our first ally in renewing our cert:
-
-  ,----
-  | "none"body
-  `----
-
-  ,----
-  | "none"body
-  `----
-
-  ,----
-  | "none"body
-  `----
+  Our HAProxy config is our first ally in renewing our cert.
 
   In particular, we want to look at the `https-in' frontend. This will
   be doing some of the work for us.
 
   ,----
-  | "code"body
+  | frontend https-in
+  | 	bind *:443 ssl crt /etc/haproxy/certs/
+  | 	http-request set-header X-Forwarded-Proto https
+  | 
+  | 	#mark ACME (Let's Encrypt) challenge requests
+  | 	acl acme path_beg /.well-known/acme-challenge/
+  | 
+  | 	# domains in api.lst should be proxied to the API server
+  | 	acl api_host hdr(Host) -f /etc/haproxy/api.lst
+  | 	use_backend api if api_host !acme #unless they're ACME challenges
+  | 
+  | 	default_backend apache
   `----
 
   ,----
@@ -672,11 +720,13 @@ _________________
   `----
 
   ,----
-  | "no noweb: yes"body
-  `----
-
-  ,----
-  | "no exports: none"body
+  |   function renew_cert {
+  | <<renew_cert_input_check>>      
+  | 
+  | <<renew_cert_calculate>>
+  | 
+  | <<renew_cert_do_challenge>>
+  |   }
   `----
 
 
@@ -725,5 +775,87 @@ _________________
   This leaves us with a few lines to get our system up and running:
 
   ,----
-  | "no noweb: yes"body
+  | function install {
+  | apt-get install -y haproxy apache2 bc letsencrypt php-imagick php-pear php-pecl-http php7.0 php7.0-bcmath php7.0-bz2 php7.0-cgi php7.0-cli php7.0-common php7.0-curl php7.0-dba php7.0-dev php7.0-enchant php7.0-fpm php7.0-gd php7.0-gmp php7.0-imap php7.0-interbase php7.0-intl php7.0-json php7.0-ldap php7.0-mbstring php7.0-mysql php7.0-sqlite3 php7.0-sybase php7.0-tidy php7.0-xml php7.0-xmlrpc php7.0-xsl php7.0-zip
+  | 
+  | {
+  |     cat <<HAPROXYCONF
+  |     global
+  | 	    log /dev/log    local0
+  | 	    log /dev/log    local1 notice
+  | 	    chroot /var/lib/haproxy
+  | 	    stats socket /run/haproxy/admin.sock mode 660 level admin
+  | 	    stats timeout 30s
+  | 	    user haproxy
+  | 	    group haproxy
+  | 	    daemon
+  | 
+  | 	    # Default SSL material locations
+  | 	    ca-base /etc/ssl/certs
+  | 	    crt-base /etc/ssl/private
+  | 
+  | 	    # Default ciphers to use on SSL-enabled listening sockets.
+  | 	    # For more information, see ciphers(1SSL). This list is from:
+  | 	    #  https://hynek.me/articles/hardening-your-web-servers-ssl-ciphers/
+  | 	    ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:ECDH+3DES:DH+3DES:RSA+AESGCM:RSA+AES:RSA+3DES:!aNULL:!MD5:!DSS
+  | 	    ssl-default-bind-options no-sslv3
+  | 
+  |     defaults
+  | 	    log     global
+  | 	    mode    http
+  | 	    option  httplog
+  | 	    option  dontlognull
+  | 	    timeout connect 5000
+  | 	    timeout client  50000
+  | 	    timeout server  50000
+  | 	    errorfile 400 /etc/haproxy/errors/400.http
+  | 	    errorfile 403 /etc/haproxy/errors/403.http
+  | 	    errorfile 408 /etc/haproxy/errors/408.http
+  | 	    errorfile 500 /etc/haproxy/errors/500.http
+  | 	    errorfile 502 /etc/haproxy/errors/502.http
+  | 	    errorfile 503 /etc/haproxy/errors/503.http
+  | 	    errorfile 504 /etc/haproxy/errors/504.http
+  | 
+  |     frontend http-in
+  | 	    bind *:80
+  | 
+  | 	    #domains in no_ssl.lst shouldn't be redirected to HTTPS
+  | 	    acl no_ssl_host hdr(Host) -f /etc/haproxy/no_ssl.lst
+  | 	    redirect scheme https code 301 if !{ ssl_fc } !no_ssl_host
+  | 
+  | 	    #mark ACME (Let's Encrypt) challenge requests
+  | 	    acl acme path_beg /.well-known/acme-challenge/
+  | 
+  | 	    # domains in api.lst should be proxied to the API server
+  | 	    acl api_host hdr(Host) -f /etc/haproxy/api.lst
+  | 	    use_backend api if api_host !acme #unless they're ACME challenges
+  | 
+  | 	    default_backend apache
+  | 
+  |     frontend https-in
+  | 	    bind *:443 ssl crt /etc/haproxy/certs/
+  | 	    http-request set-header X-Forwarded-Proto https
+  | 
+  | 	    #mark ACME (Let's Encrypt) challenge requests
+  | 	    acl acme path_beg /.well-known/acme-challenge/
+  | 
+  | 	    # domains in api.lst should be proxied to the API server
+  | 	    acl api_host hdr(Host) -f /etc/haproxy/api.lst
+  | 	    use_backend api if api_host !acme #unless they're ACME challenges
+  | 
+  | 	    default_backend apache
+  | 
+  |     backend apache
+  | 	    server hweb 127.0.0.1:8080
+  | 
+  |     backend api
+  | 	    server api api:80
+  | HAPROXYCONF
+  | }>/etc/haproxy/haproxy.cfg.new
+  | 
+  | service apache2 stop
+  | service apache2 start
+  | 
+  | service haproxy reload
+  | }
   `----

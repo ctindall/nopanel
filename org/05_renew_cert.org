@@ -6,10 +6,10 @@
 **** Installing or Renewing Certificates
      As mentioned, Let's Encrypt certificates have short validity periods, so unless you want to be manually validating and re-installing every 3 months, it's best to put some automation in place. 
 
-     Our HAProxy config is our first ally in renewing our cert:
+     Our HAProxy config is our first ally in renewing our cert.
 
 #+NAME: haproxy_config_global
-#+BEGIN_SRC conf exports: none
+#+BEGIN_SRC conf :exports none
   global
           log /dev/log    local0
           log /dev/log    local1 notice
@@ -32,7 +32,7 @@
 #+END_SRC
 
 #+NAME: haproxy_config_defaults
-#+BEGIN_SRC conf exports: none
+#+BEGIN_SRC conf :exports none
   defaults
           log     global
           mode    http
@@ -51,7 +51,7 @@
 #+END_SRC
 
 #+NAME: haproxy_config_http
-#+BEGIN_SRC conf exports: none
+#+BEGIN_SRC conf :exports none
   frontend http-in
           bind *:80
 
@@ -72,7 +72,7 @@
      In particular, we want to look at the =https-in= frontend. This will be doing some of the work for us.
 
 #+NAME: haproxy_config_https
-#+BEGIN_SRC conf exports: code
+#+BEGIN_SRC conf :exports code
   frontend https-in
           bind *:443 ssl crt /etc/haproxy/certs/
           http-request set-header X-Forwarded-Proto https
@@ -158,7 +158,7 @@
 #+END_SRC
 
 #+NAME: renew_cert
-#+BEGIN_SRC sh padline: no noweb: yes
+#+BEGIN_SRC sh :padline no noweb: yes
   function renew_cert {
 <<renew_cert_input_check>>      
 
@@ -169,7 +169,7 @@
 #+END_SRC
 
 #+NAME: haproxy_config
-#+BEGIN_SRC conf padline: no exports: none
+#+BEGIN_SRC conf :padline no :exports none
 <<haproxy_config_global>>
 
 <<haproxy_config_defaults>>
