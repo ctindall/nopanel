@@ -12,8 +12,9 @@ _________________
 ..... 1.1.1 Creating Sites
 ..... 1.1.2 Deleting Sites
 ..... 1.1.3 Backing Up Sites
-..... 1.1.4 Listing Sites
-..... 1.1.5 Managing Certificates
+..... 1.1.4 Backup It All Up
+..... 1.1.5 Listing Sites
+..... 1.1.6 Managing Certificates
 .. 1.2 Installation
 
 
@@ -478,6 +479,7 @@ _________________
   ...and tar the whole thing up:
 
   ,----
+  | olddir="$(pwd)"
   | cd $tmpdir
   | tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
   `----
@@ -486,6 +488,7 @@ _________________
 
   ,----
   | rm -rf $tmpdir
+  | cd "$olddir"
   `----
 
   The finished function:
@@ -495,7 +498,20 @@ _________________
   `----
 
 
-1.1.4 Listing Sites
+1.1.4 Backup It All Up
+----------------------
+
+  With `backup_site' and `list_sites' in our quiver, backing up all
+  sites becomes not much more than a oneliner:
+
+  ,----
+  | function backup_all {
+  |     list_sites | awk '{print $1}' | while read d; do backup_site "$d"; done
+  | }
+  `----
+
+
+1.1.5 Listing Sites
 -------------------
 
   So far, we can create, delete, and backup NoPanel sites. What if we
@@ -513,7 +529,7 @@ _________________
   this later).
 
 
-1.1.5 Managing Certificates
+1.1.6 Managing Certificates
 ---------------------------
 
   The [Let's Encrypt Project] is a wonderful thing. They run a
@@ -531,7 +547,7 @@ _________________
   [Let's Encrypt Project] https://letsencrypt.org/
 
 
-* 1.1.5.1 Installing or Renewing Certificates
+* 1.1.6.1 Installing or Renewing Certificates
 
   As mentioned, Let's Encrypt certificates have short validity periods,
   so unless you want to be manually validating and re-installing every 3
@@ -563,7 +579,7 @@ _________________
   | 	server hweb 127.0.0.1:8080
   | 
   | backend api
-  | 	server api 127.0.0.1:5000
+  | 	server api api:80
   `----
 
   The `https-in' backend listens on port 443 on all interfaces, and
@@ -693,7 +709,7 @@ _________________
   |     cat <<HAPROXYCONF
   |     <<haproxy_config>>
   | HAPROXYCONF
-  | }>/etc/haproxy/haproxy.cfg
+  | }>/etc/haproxy/haproxy.cfg.new
   `----
 
   Finally, start Apache and HAproxy. Actually, we stop them first, in
@@ -703,8 +719,7 @@ _________________
   | service apache2 stop
   | service apache2 start
   | 
-  | service haproxy stop
-  | service haproxy start
+  | service haproxy reload
   `----
 
   This leaves us with a few lines to get our system up and running:

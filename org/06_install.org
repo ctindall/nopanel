@@ -20,7 +20,7 @@ Next, we install the HAproxy configuration:
       cat <<HAPROXYCONF
       <<haproxy_config>>
   HAPROXYCONF
-  }>/etc/haproxy/haproxy.cfg
+  }>/etc/haproxy/haproxy.cfg.new
 #+END_SRC
 
 Finally, start Apache and HAproxy. Actually, we stop them first, in case one or the other is already running.
@@ -30,8 +30,7 @@ Finally, start Apache and HAproxy. Actually, we stop them first, in case one or 
 service apache2 stop
 service apache2 start
 
-service haproxy stop
-service haproxy start
+service haproxy reload
 #+END_SRC
 
 This leaves us with a few lines to get our system up and running:

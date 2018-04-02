@@ -62,6 +62,7 @@ Now we can move the files over:
 
 #+NAME: backup_site_tar_files
 #+BEGIN_SRC sh
+olddir="$(pwd)"
 cd $tmpdir
 tar -czvf /root/backups/$domain-$(date +%F-%s).tar.gz .
 #+END_SRC
@@ -71,6 +72,7 @@ Finally, we want to clean up our temporary files:
 #+NAME: backup_site_cleanup
 #+BEGIN_SRC sh
 rm -rf $tmpdir
+cd "$olddir"
 #+END_SRC
 
 The finished function:
@@ -89,4 +91,14 @@ function backup_site {
 
 <<backup_site_cleanup>>
 }
+#+END_SRC
+
+*** Backup It All Up
+    With =backup_site= and =list_sites= in our quiver, backing up all sites becomes not much more than a oneliner:
+
+#+NAME: backup_all
+#+BEGIN_SRC sh
+  function backup_all {
+      list_sites | awk '{print $1}' | while read d; do backup_site "$d"; done
+  }
 #+END_SRC

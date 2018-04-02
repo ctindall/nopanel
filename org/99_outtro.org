@@ -22,6 +22,8 @@
 
   <<install>>
 
+  <<backup_all>>
+
   if [[ "$cmd" == "create_site" ]]; then
       create_site "$1" "$2"
       exit 0
@@ -49,6 +51,11 @@
 
   if [[ "$cmd" == "install" ]]; then
       install "$1" "$2"
+      exit 0
+  fi
+
+  if [[ "$cmd" == "backup_all" ]]; then
+      backup_all "$1" "$2"
       exit 0
   fi
 
