@@ -697,23 +697,33 @@ _________________
   `letsencrypt' tool gives us into one file, since that's the format
   HAProxy expects.
 
+  Note that first we use `dig' to try and resolve the domain. If it
+  doesn't even resolve, there's no point in trying to validate it.
+
   ,----
   | if [[ "$days_until_expiration" -lt "$expiration_cutoff" ]]
   | then
   |     for d in "$domain" "www.$domain"
-  |     do  
-  | 	if  letsencrypt certonly \
-  | 			--webroot \
-  | 			--keep-until-expiring \
-  | 			--email "$email" \
-  | 			--agree-tos \
-  | 			-w $webroot \
-  | 			-d $d
-  | 	then
-  | 	    cat /etc/letsencrypt/live/$d/fullchain.pem \
-  | 		/etc/letsencrypt/live/$d/privkey.pem > $haproxy_cert_dir/$d.pem
+  |     do
+  | 	if [[ "$(dig +short $d)" != ""]]
+  | 	then #the domain actually resolves, so let's go ahead
+  | 	    if  letsencrypt certonly \
+  | 			       --webroot \
+  | 			       --keep-until-expiring \
+  | 			       --email "$email" \
+  | 			       --agree-tos \
+  | 			       -w $webroot \
+  | 			       -d $d
+  | 	       then
+  | 		   cat /etc/letsencrypt/live/$d/fullchain.pem \
+  | 		       /etc/letsencrypt/live/$d/privkey.pem > $haproxy_cert_dir/$d.pem
   | 
-  | 	    service haproxy reload
+  | 		   service haproxy reload
+  | 	       fi
+  | 	else # The domain doesn't even resolve. Either the
+  | 	     # 'www.' subdomain for this site isn't used, or this is a
+  | 	     # deprecated site. TODO: log/notify on this.
+  | 	    echo ""
   | 	fi
   |     done
   | fi
